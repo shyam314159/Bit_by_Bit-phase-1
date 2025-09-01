@@ -1,30 +1,7 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[1]:
-
-
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as sio
 import os
-
-
-# # **Side-Channel Attack Metrics**
-# 
-# We analyze CPA results to estimate **Confidence** for key recovery.  
-# 
-# - ## **Confidence:**  
-#   Difference between the top two key scores:
-# 
-#   $\text{Confidence} = s_{\text{top}} - s_{\text{second}}$
-# 
-#   - High → top candidate clearly stands out, attack is reliable.  
-#   - Low → ambiguity between top candidates.
-# 
-
-# In[2]:
-
 
 def ge_confidence_from_cpa(cpa, beta=1.0, standardize=True):
     s = np.max(np.abs(cpa), axis=1)
@@ -37,12 +14,6 @@ def ge_confidence_from_cpa(cpa, beta=1.0, standardize=True):
 
     confidence = sorted_s[0] - sorted_s[1] if K > 1 else sorted_s[0]
     return {'confidence': confidence}
-
-
-# # **Helper Functions**
-
-# In[3]:
-
 
 # AES S-box and inverse S-box
 AES_Sbox = np.array([
@@ -104,46 +75,6 @@ def plot_cpa_results(cpa_results, byte_idx, save_path):
 
 
 # # **Correlation Power Analysis (CPA) — Ciphertext Known Attack**
-# 
-# ## Idea
-# Devices leak power ≈ function of data.  
-# We model leakage with **Hamming Weight**:
-# 
-# $$
-# HW(x) = number \: of \: 1 \: bits \: in \: x
-# $$
-# 
-# ---
-# 
-# ## Steps
-# 1. **Hypothesis:**  
-#    For each key guess \(k \in [0,255]\):
-# 
-#    - If leakage comes from **last round SBox input**:
-# 
-#    $$
-#    z_i(k) = InvSBox(c_i \oplus k), \quad h_i(k) = HW(z_i(k))
-#    $$
-# 
-# 
-#    where \(c_i\) is ciphertext byte before shift row operation of corresponding trace \(i\).
-# 
-# 2. **Correlation:**  
-#    For traces \(t_i\) and hypothesis \(h_i(k)\):
-# 
-#    $$
-#    \rho(k) = \frac{\text{Cov}(t,h(k))}{\sigma_t \, \sigma_{h(k)}}
-#    $$
-# 
-# 3. **Decision:**  
-#    Key guess with max \(|\rho(k)|\) is the recovered key byte.
-# 
-# ---
-# 
-# **Result:** Repeat for 16 bytes → AES last round key.
-# 
-
-# In[4]:
 
 
 def compute_correlation(X, Y):
@@ -210,62 +141,8 @@ def run_cpa_attack(traces, ciphertexts, save_path):
             plot_cpa_results(cpa_results, attack_byte, f'{save_path}/cpa_correlation_byte_{attack_byte}.png')
             np.save(f'{save_path}/cpa_result_byte_{attack_byte}.npy', cpa_results)
 
-
-
     print("\nPredicted full AES last round key (hex):", predicted_key.tobytes().hex())
     return predicted_key
-
-
-
-# # **CPA on Simulated Side-Channel Power Traces**
-
-# In[5]:
-
-
-import kagglehub
-
-# Download latest version
-path = kagglehub.dataset_download("pepelord2233/bit-by-bit-dataset")
-
-print("Path to dataset files:", path)
-
-
-# In[6]:
-
-
-import pandas as pd
-import numpy as np
-
-# load without header so first row is preserved
-data = pd.read_csv("/kaggle/input/bit-by-bit-dataset/simulated_power_trace.csv", header=None)
-
-# first column is ciphertext
-ciphertexts_hex = data.iloc[:, 0].astype(str).values  
-ciphertexts = np.array([list(bytes.fromhex(ct)) for ct in ciphertexts_hex])
-
-# rest are traces
-traces = data.iloc[:, 1:].to_numpy(dtype=np.int8)  
-
-print(f"Loaded traces shape: {traces.shape} and dtye: {type(traces[0][0])}")
-print(f"Loaded plaintexts shape: {ciphertexts.shape}")
-
-
-# In[7]:
-
-
-predicted_key = run_cpa_attack(traces, ciphertexts, "simulation_power_results")
-
-
-# >**Actual 128 bit key value**
-
-# In[8]:
-
-
-predicted_key
-
-
-# In[9]:
-
 
 # round constants
 Rcon = [0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1B,0x36]
@@ -293,49 +170,46 @@ def inv_key_schedule(last_round_key):
     original_key = sum(all_words[0:4], [])
     return original_key
 
+
+# # **CPA on Simulated Side-Channel Power Traces**
+
+import kagglehub
+
+# Download latest version
+path = kagglehub.dataset_download("pepelord2233/bit-by-bit-dataset")
+
+print("Path to dataset files:", path)
+
+import pandas as pd
+import numpy as np
+
+# load without header so first row is preserved
+data = pd.read_csv(f"{path}/simulated_power_trace.csv", header=None)
+
+# first column is ciphertext
+ciphertexts_hex = data.iloc[:, 0].astype(str).values  
+ciphertexts = np.array([list(bytes.fromhex(ct)) for ct in ciphertexts_hex])
+
+# rest are traces
+traces = data.iloc[:, 1:].to_numpy(dtype=np.int8)  
+
+print(f"Loaded traces shape: {traces.shape} and dtye: {type(traces[0][0])}")
+print(f"Loaded plaintexts shape: {ciphertexts.shape}")
+
+predicted_key = run_cpa_attack(traces, ciphertexts, "simulation_power_results")
+print(predicted_key)
+
 # run recovery
 original_key = np.array (inv_key_schedule(predicted_key))
 print("Recovered AES-128 master key (bytes):", original_key[:])
 print("Hex:", ''.join(f"{b:02x}" for b in original_key))
 
 
-# # Structure of `cpa_summary.json`
-# 
-# The file contains a dictionary where:  
-# 
-# - **Keys** = AES byte index (0–15)  
-# - **Values** = list of 256 correlation scores, one per possible key guess  
-# 
-# ---
-# 
-# ## Example
-# 
-# ```json
-# {
-#   "0": [0.0123, 0.0345, ..., 0.8765], 
-#   "1": [0.0456, 0.0234, ..., 0.9123],
-#   ...
-#   "15": [0.0789, 0.0567, ..., 0.8342]
-# }
-# 
-# 
-# The analysis produced sixteen files containing the correlation scores for each AES key byte:
-# 
-# - `byte_**.txt`    
-# 
-# Each file lists **256 possible values of the corresponding key byte**, one per line, and is saved in the folder:  `/kaggle/working/simulated_trace_key_bytes`
-# 
-# 
-# Additionally, the final AES key (derived from the highest correlation values) is saved in a separate file: simulated_power_trace_masterkey.txt
-
-# In[10]:
-
-
 import numpy as np
 import os
 import json
 
-base_path = "/kaggle/working/simulation_power_results"
+base_path = "simulation_power_results"
 results = {}
 
 for byte_index in range(16):
@@ -358,22 +232,16 @@ with open(os.path.join(base_path, "cpa_summary.json"), "w") as f:
 print("Saved summary to cpa_summary.json")
 
 
-# In[11]:
-
-
 import json, os
 
-out_folder = '/kaggle/working/simulated_trace_key_bytes'
+out_folder = 'simulated_trace_key_bytes'
 os.makedirs(out_folder, exist_ok=True)
 
-data = json.load(open('/kaggle/working/simulation_power_results/cpa_summary.json'))
+data = json.load(open('cpa_summary.json'))
 
 for i in range(16):
     with open(f'{out_folder}/byte_{i:02}.txt', 'w') as f:
         f.writelines(f"{s}\n" for s in data[str(i)])
-
-
-# In[12]:
 
 
 import numpy as np
@@ -382,19 +250,16 @@ import numpy as np
 arr = original_key
 
 # Save as space-separated text file
-np.savetxt("/kaggle/working/simulated_power_trace_masterkey.txt", arr, fmt="%d")  
+np.savetxt("simulated_power_trace_masterkey.txt", arr, fmt="%d")  
 
 
 # # **CPA on Real Side-Channel Power Traces**
-
-# In[13]:
-
 
 import pandas as pd
 import numpy as np
 
 # load without header so first row is preserved
-data = pd.read_csv("/kaggle/input/bit-by-bit-dataset/real_power_trace.csv", header=None)
+data = pd.read_csv(f"{path}/real_power_trace.csv", header=None)
 
 # first column is plaintext
 plaintexts_hex = data.iloc[:, 0].astype(str).values  
@@ -412,9 +277,6 @@ print(f"Loaded plaintexts shape: {plaintexts.shape}")
 print(f"Loaded ciphertexts shape: {ciphertexts.shape}")
 
 
-# In[14]:
-
-
 import matplotlib.pyplot as plt
 
 # plot first 5 traces
@@ -427,9 +289,6 @@ plt.ylabel("Power value")
 plt.title("First 10 Traces")
 plt.legend()
 plt.show()
-
-
-# In[15]:
 
 
 import numpy as np
@@ -466,47 +325,13 @@ plt.title("After filtering")
 plt.show()
 
 
-traces = filtered_traces # [:, 500:1000]
+traces = filtered_traces 
 ciphertexts = filtered_ciphertexts
 plaintexts = filtered_plaintexts
 
 
-# In[16]:
-
-
 predicted_key = run_cpa_attack(traces, ciphertexts, "real_power_results")
-
-
-# >**Actual 128 bit key value**
-
-# In[17]:
-
-
-# round constants
-Rcon = [0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1B,0x36]
-
-def sub_word(word):
-    return [AES_Sbox[b] for b in word]
-
-def rot_word(word):
-    return word[1:] + word[:1]
-
-def inv_key_schedule(last_round_key):
-    # total words for AES-128 = 44 (11 round keys × 4 words)
-    words = [last_round_key[i:i+4] for i in range(0, 16, 4)]
-    all_words = [None]*44
-    all_words[40:44] = words
-
-    for i in range(43, 3, -1):
-        temp = all_words[i-1].copy()
-        if i % 4 == 0:
-            temp = sub_word(rot_word(temp))
-            temp[0] ^= Rcon[(i//4)-1]
-        all_words[i-4] = [a ^ b for a,b in zip(all_words[i], temp)]
-
-    # first 4 words = original key
-    original_key = sum(all_words[0:4], [])
-    return original_key
+print(predicted_key)
 
 # run recovery
 original_key = np.array (inv_key_schedule(predicted_key))
@@ -514,45 +339,11 @@ print("Recovered AES-128 master key (bytes):", original_key[:])
 print("Hex:", ''.join(f"{b:02x}" for b in original_key))
 
 
-# # Structure of `cpa_summary.json`
-# 
-# The file contains a dictionary where:  
-# 
-# - **Keys** = AES byte index (0–15)  
-# - **Values** = list of 256 correlation scores, one per possible key guess  
-# 
-# ---
-# 
-# ## Example
-# 
-# ```json
-# {
-#   "0": [0.0123, 0.0345, ..., 0.8765], 
-#   "1": [0.0456, 0.0234, ..., 0.9123],
-#   ...
-#   "15": [0.0789, 0.0567, ..., 0.8342]
-# }
-# 
-# 
-# The analysis produced sixteen files containing the correlation scores for each AES key byte:
-# 
-# - `byte_**.txt`    
-# 
-# Each file lists **256 possible values of the corresponding key byte**, one per line, and is saved in the folder:  `/kaggle/working/real_trace_key_bytes`
-# 
-# 
-# Additionally, the final AES key (derived from the highest correlation values) is saved in a separate file: real_power_trace_masterkey.txt
-# 
-# 
-
-# In[18]:
-
-
 import numpy as np
 import os
 import json
 
-base_path = "/kaggle/working/real_power_results"
+base_path = "real_power_results"
 results = {}
 
 for byte_index in range(16):
@@ -575,23 +366,16 @@ with open(os.path.join(base_path, "cpa_summary.json"), "w") as f:
 print("Saved summary to cpa_summary.json")
 
 
-# In[19]:
-
-
 import json, os
 
-out_folder = '/kaggle/working/real_trace_key_bytes'
+out_folder = 'real_trace_key_bytes'
 os.makedirs(out_folder, exist_ok=True)
 
-data = json.load(open('/kaggle/working/real_power_results/cpa_summary.json'))
+data = json.load(open('cpa_summary.json'))
 
 for i in range(16):
     with open(f'{out_folder}/byte_{i:02}.txt', 'w') as f:
         f.writelines(f"{s}\n" for s in data[str(i)])
-
-
-# In[20]:
-
 
 import numpy as np
 
@@ -599,36 +383,4 @@ import numpy as np
 arr = original_key
 
 # Save as space-separated text file
-np.savetxt("/kaggle/working/real_power_trace_masterkey.txt", arr, fmt="%d")  
-
-
-
-# # Problems Faced During CPA Attack on Real Traces
-# 
-# We attempted a **Correlation Power Analysis (CPA) attack** on the real power traces using a **ciphertext-known attack on the last AES round**. However, the results did not match expectations:  
-# 
-# - The **correlation peaks are not evident**, unlike what we observe in simulation traces.  
-# - This makes it difficult to confidently recover key bytes using the standard CPA methodology.  
-# 
-# Additionally, **leakage analysis methods** such as **TVLA (Test Vector Leakage Assessment)** cannot be applied in this case because we **do not have access to the secret key or intermediate values**. This limitation prevents verification of potential leakage in the collected traces.  
-# 
-# Overall, the attack on real traces is inconclusive, and further investigation or more advanced techniques may be required to extract the key successfully.
-# 
-
-# In[21]:
-
-
-get_ipython().system('zip -r real_trace_key_bytes.zip /kaggle/working/real_trace_key_bytes')
-
-
-# In[22]:
-
-
-get_ipython().system('zip -r simulated_trace_key_bytes.zip /kaggle/working/simulated_trace_key_bytes')
-
-
-# In[ ]:
-
-
-
-
+np.savetxt("real_power_trace_masterkey.txt", arr, fmt="%d")  
