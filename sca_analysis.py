@@ -70,7 +70,7 @@ def plot_cpa_results(cpa_results, byte_idx, save_path):
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
-    plt.show()
+    # plt.show()
     plt.close()
 
 
@@ -237,7 +237,7 @@ import json, os
 out_folder = 'simulated_trace_key_bytes'
 os.makedirs(out_folder, exist_ok=True)
 
-data = json.load(open('cpa_summary.json'))
+data = json.load(open(os.path.join(base_path, 'cpa_summary.json')))
 
 for i in range(16):
     with open(f'{out_folder}/byte_{i:02}.txt', 'w') as f:
@@ -371,7 +371,7 @@ import json, os
 out_folder = 'real_trace_key_bytes'
 os.makedirs(out_folder, exist_ok=True)
 
-data = json.load(open('cpa_summary.json'))
+data = json.load(open(os.path.join(base_path, 'cpa_summary.json')))
 
 for i in range(16):
     with open(f'{out_folder}/byte_{i:02}.txt', 'w') as f:
